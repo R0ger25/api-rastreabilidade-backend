@@ -1,0 +1,6 @@
+# Ignorar o arquivo de segredos
+.env
+
+# Ignorar pastas de cache do Python
+__pycache__/
+.venv/
