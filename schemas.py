@@ -18,7 +18,7 @@ class TecnicoDisplay(BaseModel):
     email: EmailStr
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --- Esquemas do Lote de Tora ---
 class LoteToraCreate(BaseModel):
@@ -40,4 +40,4 @@ class LoteToraDisplay(BaseModel):
     data_hora_registro: datetime.datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
