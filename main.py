@@ -78,6 +78,15 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     CORRIGIDO: Recebe email (no campo 'username') e senha.
     Verifica em TODAS as 3 tabelas de usuários.
     """
+    
+    # --- ADICIONE ESTAS 5 LINHAS DE DEBUG ---
+    print("--- INICIANDO TENTATIVA DE LOGIN ---")
+    print(f"Username recebido: {form_data.username}")
+    print(f"Password recebida (primeiros 10 chars): {form_data.password[:10]}...")
+    print(f"Tamanho da Password recebida: {len(form_data.password)}")
+    print("-----------------------------------")
+    # --- FIM DO DEBUG ---
+    
     user = None
     
     # 1. Tenta como Técnico
