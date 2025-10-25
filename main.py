@@ -72,27 +72,55 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 # --- Endpoint de Login (CORRIGIDO) ---
 
+# ... (o resto do seu main.py, importações, etc, fica igual) ...
+
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """
-    CORRIGIDO: Recebe email (no campo 'username') e senha.
-    Verifica em TODAS as 3 tabelas de usuários.
+    Recebe email (no campo 'username') e senha.
+    Verifica em todas as 3 tabelas de usuários.
     """
     
-    # --- ADICIONE ESTAS 5 LINHAS DE DEBUG ---
+    # Seus prints de debug (ainda úteis)
     print("--- INICIANDO TENTATIVA DE LOGIN ---")
     print(f"Username recebido: {form_data.username}")
-    print(f"Password recebida (primeiros 10 chars): {form_data.password[:10]}...")
-    print(f"Tamanho da Password recebida: {len(form_data.password)}")
+    print(f"Password recebida (tamanho): {len(form_data.password)}")
     print("-----------------------------------")
-    # --- FIM DO DEBUG ---
-    
+
     user = None
     
     # 1. Tenta como Técnico
     user_tecnico = db.query(models.TecnicoCampo).filter(models.TecnicoCampo.email == form_data.username).first()
-    if user_tecnico and auth.verificar_senha(form_data.password, user_tecnico.hash_senha):
-        user = user_tecnico
+    
+    # --- NOVO DEBUG DE COMPARAÇÃO ---
+    if user_tecnico:
+        print("--- DEBUG: ENCONTROU USUÁRIO TÉCNICO ---")
+        senha_digitada = form_data.password
+        hash_do_banco = user_tecnico.hash_senha
+        
+        print(f"Senha digitada: '{senha_digitada}'")
+        print(f"Hash do banco:  '{hash_do_banco}'")
+
+        # Esta é a verificação manual que você pediu
+        try:
+            # Chama a função de verificação e guarda o resultado
+            is_match = auth.verificar_senha(senha_digitada, hash_do_banco)
+            
+            print(f"Resultado da verificação (auth.verificar_senha): {is_match}")
+            
+            if is_match:
+                print("VERIFICAÇÃO BATEU! Login deve funcionar.")
+                user = user_tecnico
+            else:
+                print("VERIFICAÇÃO FALHOU! Senha não bate com o hash.")
+        except Exception as e:
+            # Se a própria função 'verificar_senha' quebrar
+            print(f"ERRO AO VERIFICAR SENHA (passlib quebrou): {e}")
+        print("-----------------------------------")
+        
+    else:
+        print(f"--- DEBUG: Usuário '{form_data.username}' NÃO ENCONTRADO na tabela tecnicos_campo ---")
+    # --- FIM DO DEBUG ---
 
     # 2. Tenta como Serraria
     if not user:
@@ -108,6 +136,7 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
 
     # 4. Se não encontrou em nenhuma
     if not user:
+        print("--- DEBUG: Login FALHOU. Retornando 401 ---")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email ou senha incorretos",
@@ -115,8 +144,11 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
         )
     
     # 5. Se encontrou, cria o token
+    print("--- DEBUG: Login BEM-SUCEDIDO. Criando token ---")
     access_token = auth.criar_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
+
+# ... (o resto do seu main.py, /test-db, /users/me, etc) ...
 
 # --- Endpoint de Teste de Conexão (Bom manter) ---
 @app.get("/test-db")
