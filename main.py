@@ -136,11 +136,15 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
 
     # 2. Tenta como Serraria
     if not user:
-        # ... (código da serraria) ...
-            
+        user_serraria = db.query(models.EquipeSerraria).filter(models.EquipeSerraria.email == form_data.username).first()
+        if user_serraria and auth.verificar_senha(form_data.password, user_serraria.hash_senha):
+            user = user_serraria
+
     # 3. Tenta como Fábrica
     if not user:
-        # ... (código da fábrica) ...
+        user_fabrica = db.query(models.EquipeFabrica).filter(models.EquipeFabrica.email == form_data.username).first()
+        if user_fabrica and auth.verificar_senha(form_data.password, user_fabrica.hash_senha):
+            user = user_fabrica
 
     # 4. Se não encontrou em nenhuma
     if not user:
