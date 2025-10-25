@@ -202,6 +202,23 @@ def get_current_tecnico(token: str = Depends(oauth2_scheme), db: Session = Depen
         raise credentials_exception
     return user
 
+# --- NOVO ENDPOINT DE FERRAMENTA (GERADOR DE HASH) ---
+@app.get("/hash-senha/{senha}")
+def get_hash_para_senha(senha: str):
+    """
+    Ferramenta de debug. Pega uma senha da URL e retorna o hash
+    bcrypt correto gerado por ESTE servidor.
+    """
+    try:
+        hash_gerado = auth.get_hash_senha(senha)
+        return {
+            "senha_fornecida": senha,
+            "hash_gerado_pelo_servidor": hash_gerado
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar hash: {e}")
+# --- FIM DO NOVO ENDPOINT ---
+
 @app.post("/lotes_tora/", response_model=schemas.LoteToraDisplay, status_code=status.HTTP_201_CREATED)
 def create_lote_tora(
     lote: schemas.LoteToraCreate, 
