@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List
-from jose import jwt, JWTError # <-- IMPORTAÇÃO CORRIGIDA AQUI
+from jose import jwt, JWTError # Importação correta
 
 # Importa de todos os nossos outros arquivos
 from database import get_db
@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="API Rastreabilidade - Versão Completa")
 
-# --- Configuração do CORS ---
+# --- Configuração do CORS (formatação limpa) ---
 origins = [
     "http://localhost",
     "http://127.0.0.1:5500",
@@ -37,10 +37,10 @@ app.add_middleware(
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-def get_current_tecnico(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.TecnicoCampo:
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     """
-    Decodifica o token, pega o email e retorna o objeto do usuário (Técnico).
-    Esta função PROTEGE um endpoint.
+    CORRIGIDO: Esta função agora é genérica.
+    Decodifica o token e retorna o objeto do usuário de QUALQUER tabela.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -48,38 +48,64 @@ def get_current_tecnico(token: str = Depends(oauth2_scheme), db: Session = Depen
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        # Agora o 'jwt' está definido e o código funciona
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
         token_data = schemas.TokenData(email=email)
-    except JWTError: # <-- E o JWTError também
+    except JWTError:
         raise credentials_exception
     
-    # Verifica se o usuário no token é um Técnico de Campo
+    # Procura o usuário em todas as 3 tabelas
     user = db.query(models.TecnicoCampo).filter(models.TecnicoCampo.email == token_data.email).first()
-    if user is None:
-        raise credentials_exception
-    return user
+    if user:
+        return user
+    user = db.query(models.EquipeSerraria).filter(models.EquipeSerraria.email == token_data.email).first()
+    if user:
+        return user
+    user = db.query(models.EquipeFabrica).filter(models.EquipeFabrica.email == token_data.email).first()
+    if user:
+        return user
+    
+    # Se não encontrou em nenhuma
+    raise credentials_exception
 
-# --- Endpoint de Login ---
+# --- Endpoint de Login (CORRIGIDO) ---
 
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """
-    Recebe email (no campo 'username') e senha.
-    Retorna um Token JWT se o login for válido.
+    CORRIGIDO: Recebe email (no campo 'username') e senha.
+    Verifica em TODAS as 3 tabelas de usuários.
     """
-    user = db.query(models.TecnicoCampo).filter(models.TecnicoCampo.email == form_data.username).first()
+    user = None
     
-    if not user or not auth.verificar_senha(form_data.password, user.hash_senha):
+    # 1. Tenta como Técnico
+    user_tecnico = db.query(models.TecnicoCampo).filter(models.TecnicoCampo.email == form_data.username).first()
+    if user_tecnico and auth.verificar_senha(form_data.password, user_tecnico.hash_senha):
+        user = user_tecnico
+
+    # 2. Tenta como Serraria
+    if not user:
+        user_serraria = db.query(models.EquipeSerraria).filter(models.EquipeSerraria.email == form_data.username).first()
+        if user_serraria and auth.verificar_senha(form_data.password, user_serraria.hash_senha):
+            user = user_serraria
+            
+    # 3. Tenta como Fábrica
+    if not user:
+        user_fabrica = db.query(models.EquipeFabrica).filter(models.EquipeFabrica.email == form_data.username).first()
+        if user_fabrica and auth.verificar_senha(form_data.password, user_fabrica.hash_senha):
+            user = user_fabrica
+
+    # 4. Se não encontrou em nenhuma
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email ou senha incorretos",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    # 5. Se encontrou, cria o token
     access_token = auth.criar_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -92,21 +118,42 @@ def test_database_connection(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- Endpoints Protegidos (Técnico de Campo) ---
+# --- Endpoints Protegidos ---
 
-@app.get("/users/me", response_model=schemas.TecnicoDisplay)
-def read_users_me(current_user: models.TecnicoCampo = Depends(get_current_tecnico)):
+@app.get("/users/me", response_model=schemas.UserDisplay)
+def read_users_me(current_user = Depends(get_current_user)):
     """
-    Rota protegida. Retorna as informações do usuário
-    que está logado (dono do token).
+    CORRIGIDO: Rota protegida genérica.
+    Usa o get_current_user e retorna o schemas.UserDisplay.
     """
     return current_user
+
+# --- Endpoint Específico do Técnico ---
+# (Precisamos manter a função get_current_tecnico se quisermos 
+# ter rotas que SÓ técnicos podem acessar)
+
+def get_current_tecnico(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.TecnicoCampo:
+    # Esta função é a mesma que você tinha, mas agora é usada SÓ para esta rota
+    credentials_exception = HTTPException(status_code=401, detail="Não autorizado: Apenas Técnicos de Campo")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+        token_data = schemas.TokenData(email=email)
+    except JWTError:
+        raise credentials_exception
+    
+    user = db.query(models.TecnicoCampo).filter(models.TecnicoCampo.email == token_data.email).first()
+    if user is None:
+        raise credentials_exception
+    return user
 
 @app.post("/lotes_tora/", response_model=schemas.LoteToraDisplay, status_code=status.HTTP_201_CREATED)
 def create_lote_tora(
     lote: schemas.LoteToraCreate, 
     db: Session = Depends(get_db), 
-    current_user: models.TecnicoCampo = Depends(get_current_tecnico) # PROTEGIDO
+    current_user: models.TecnicoCampo = Depends(get_current_tecnico) # Protegido SÓ para técnicos
 ):
     """
     Cria um novo Lote de Tora. Requer login de Técnico de Campo.
@@ -116,7 +163,7 @@ def create_lote_tora(
     new_id_custom = f"TORA-{today_str}-{str(count_today + 1).zfill(3)}"
 
     db_lote = models.LoteTora(
-        **lote.dict(),
+        **lote.model_dump(), # CORRIGIDO: de .dict() para .model_dump() (Pydantic v2)
         id_lote_custom=new_id_custom,
         id_tecnico_campo=current_user.id
     )

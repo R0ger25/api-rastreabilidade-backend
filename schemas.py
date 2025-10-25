@@ -3,7 +3,7 @@ from typing import List, Optional
 from decimal import Decimal
 import datetime
 
-# --- Esquemas de Autenticação ---
+# --- Esquemas de Autenticação (Corretos) ---
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -11,18 +11,22 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     email: Optional[str] = None
 
-# --- Esquemas do Técnico de Campo ---
-class TecnicoDisplay(BaseModel):
+# --- Esquema de Usuário (CORRIGIDO) ---
+# Renomeado para UserDisplay e simplificado para
+# funcionar com todos os 3 tipos de usuário.
+class UserDisplay(BaseModel):
     id: int
-    nome: str
     email: EmailStr
+    # 'nome' não é um campo comum (é 'nome' ou 'nome_responsavel')
+    # Então, para simplificar, o /users/me só retorna id e email.
     
     class Config:
-        from_attributes = True
+        from_attributes = True # Nome correto para Pydantic v2
 
-# --- Esquemas do Lote de Tora ---
+# --- Esquemas do Lote de Tora (Opcional para Login) ---
+# (Pode manter se você for adicionar o endpoint de criar lote depois)
+
 class LoteToraCreate(BaseModel):
-    # O que o técnico envia pelo formulário
     coordenadas_gps_lat: Decimal
     coordenadas_gps_lon: Decimal
     numero_dof: str
@@ -33,7 +37,6 @@ class LoteToraCreate(BaseModel):
     fotos_evidencia: Optional[List[str]] = None
 
 class LoteToraDisplay(BaseModel):
-    # O que a API retorna após o sucesso
     id: int
     id_lote_custom: str
     id_tecnico_campo: int
