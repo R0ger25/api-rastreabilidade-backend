@@ -5,6 +5,7 @@ psycopg2-binary
 python-dotenv
 fastapi-cors
 pydantic[email]
-passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
+passlib
+bcrypt<4.0
