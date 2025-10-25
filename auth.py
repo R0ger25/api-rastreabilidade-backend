@@ -5,7 +5,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 
-load_dotenv()
+# Garante que as variáveis do .env sejam carregadas
+load_dotenv() 
 
 # --- Configuração de Hash de Senha (bcrypt) ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -18,18 +19,20 @@ def get_hash_senha(senha):
     """Gera o hash de uma senha plana."""
     return pwd_context.hash(senha)
 
-# --- Configuração do Token JWT (Versão "Gambiarra" para Faculdade) ---
+# --- Configuração do Token JWT (Do jeito correto, via .env) ---
 
-# Colocamos a chave direto no código.
-# NÃO FAÇA ISSO EM PROJETOS REAIS!
-SECRET_KEY = "41960d71f4f6e8a6cd5a2aea21d073c697bf0dbef6d0f63ede7b1452a0f009fe"
-
+# 1. Pega a chave do ambiente (do .env local ou do Render)
+SECRET_KEY = os.getenv("SECRET_KEY") 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # Token expira em 1 dia
 
-# Não precisamos mais da verificação, pois a chave está logo acima.
-# if not SECRET_KEY:
-#    raise ValueError("Variável de ambiente SECRET_KEY não definida.")
+# 2. Re-adicionamos a verificação de segurança
+# (Se a API não encontrar a chave, ela deve falhar ao iniciar)
+if not SECRET_KEY:
+    raise ValueError(
+        "Variável de ambiente SECRET_KEY não definida. "
+        "Defina-a no seu .env ou nas variáveis de ambiente do Render."
+    )
 
 def criar_access_token(data: dict):
     """Cria um novo token de acesso JWT."""
