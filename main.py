@@ -74,6 +74,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 # ... (o resto do seu main.py, importações, etc, fica igual) ...
 
+# ... (o resto do seu main.py, importações, etc, fica igual) ...
+
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """
@@ -81,7 +83,6 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     Verifica em todas as 3 tabelas de usuários.
     """
     
-    # Seus prints de debug (ainda úteis)
     print("--- INICIANDO TENTATIVA DE LOGIN ---")
     print(f"Username recebido: {form_data.username}")
     print(f"Password recebida (tamanho): {len(form_data.password)}")
@@ -92,30 +93,41 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     # 1. Tenta como Técnico
     user_tecnico = db.query(models.TecnicoCampo).filter(models.TecnicoCampo.email == form_data.username).first()
     
-    # --- NOVO DEBUG DE COMPARAÇÃO ---
+    # --- NOVO DEBUG DE COMPARAÇÃO AVANÇADO ---
     if user_tecnico:
-        print("--- DEBUG: ENCONTROU USUÁRIO TÉCNICO ---")
+        print("--- DEBUG AVANÇADO: ENCONTROU USUÁRIO TÉCNICO ---")
         senha_digitada = form_data.password
         hash_do_banco = user_tecnico.hash_senha
         
-        print(f"Senha digitada: '{senha_digitada}'")
-        print(f"Hash do banco:  '{hash_do_banco}'")
+        # [PROVA 1]: Vamos ver o hash "sujo"
+        print(f"[1] Senha digitada: '{senha_digitada}'")
+        print(f"[2] Hash do Banco (Repr): {repr(hash_do_banco)}")
+        print(f"[2] Hash do Banco (Tamanho): {len(hash_do_banco)}")
+        if len(hash_do_banco) != 60:
+             print("[!] ALERTA: Um hash bcrypt padrão tem EXATAMENTE 60 caracteres. O seu tem {len(hash_do_banco)}. Provavelmente tem espaços extras.")
 
-        # Esta é a verificação manual que você pediu
+        # [PROVA 2]: O TESTE DE CONTROLE
+        # Vamos verificar a senha digitada contra o hash LIMPO (que eu colei aqui)
+        hash_limpo_conhecido = '$2b$12$E.C3mF4m1J3n1.X/2k.HGe.g.S/uS6xWctbO33.jL2N0mS/m/L.Oq'
         try:
-            # Chama a função de verificação e guarda o resultado
-            is_match = auth.verificar_senha(senha_digitada, hash_do_banco)
+            resultado_controle = auth.verificar_senha(senha_digitada, hash_limpo_conhecido)
+            print(f"[3] TESTE DE CONTROLE ('{senha_digitada}' vs hash LIMPO): {resultado_controle}")
+        except Exception as e:
+            print(f"[3] TESTE DE CONTROLE FALHOU: {e}")
+
+        # [PROVA 3]: A VERIFICAÇÃO REAL (que está falhando)
+        print("--- Executando verificação real... ---")
+        try:
+            resultado_real = auth.verificar_senha(senha_digitada, hash_do_banco)
+            print(f"[4] VERIFICAÇÃO REAL ('{senha_digitada}' vs Hash do Banco): {resultado_real}")
             
-            print(f"Resultado da verificação (auth.verificar_senha): {is_match}")
-            
-            if is_match:
-                print("VERIFICAÇÃO BATEU! Login deve funcionar.")
+            if resultado_real:
+                print("[>] VERIFICAÇÃO REAL BATEU! Login deve funcionar.")
                 user = user_tecnico
             else:
-                print("VERIFICAÇÃO FALHOU! Senha não bate com o hash.")
+                print("[X] VERIFICAÇÃO REAL FALHOU! (Compare com o Teste de Controle)")
         except Exception as e:
-            # Se a própria função 'verificar_senha' quebrar
-            print(f"ERRO AO VERIFICAR SENHA (passlib quebrou): {e}")
+            print(f"[X] ERRO AO VERIFICAR SENHA (passlib quebrou): {e}")
         print("-----------------------------------")
         
     else:
@@ -124,15 +136,11 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
 
     # 2. Tenta como Serraria
     if not user:
-        user_serraria = db.query(models.EquipeSerraria).filter(models.EquipeSerraria.email == form_data.username).first()
-        if user_serraria and auth.verificar_senha(form_data.password, user_serraria.hash_senha):
-            user = user_serraria
+        # ... (código da serraria) ...
             
     # 3. Tenta como Fábrica
     if not user:
-        user_fabrica = db.query(models.EquipeFabrica).filter(models.EquipeFabrica.email == form_data.username).first()
-        if user_fabrica and auth.verificar_senha(form_data.password, user_fabrica.hash_senha):
-            user = user_fabrica
+        # ... (código da fábrica) ...
 
     # 4. Se não encontrou em nenhuma
     if not user:
