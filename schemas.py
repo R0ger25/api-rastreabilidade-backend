@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Literal
 from decimal import Decimal
 import datetime
 
@@ -17,8 +17,8 @@ class TokenData(BaseModel):
 class UserDisplay(BaseModel):
     id: int
     email: EmailStr
-    # 'nome' não é um campo comum (é 'nome' ou 'nome_responsavel')
-    # Então, para simplificar, o /users/me só retorna id e email.
+    role: Literal["tecnico", "serraria", "fabrica"]
+    # O 'role' dirá ao frontend qual tipo de usuário está logado
     
     class Config:
         from_attributes = True # Nome correto para Pydantic v2

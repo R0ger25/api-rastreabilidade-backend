@@ -4,3 +4,6 @@
 # Ignorar pastas de cache do Python
 __pycache__/
 .venv/
+
+# Ignorar a pasta do frontend
+frontend_rastreabilidade/

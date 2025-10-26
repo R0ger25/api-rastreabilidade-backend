@@ -140,10 +140,21 @@ def get_hash_para_senha(senha: str):
 @app.get("/users/me", response_model=schemas.UserDisplay)
 def read_users_me(current_user = Depends(get_current_user)):
     """
-    Rota protegida genérica. Retorna as informações (id, email)
-    do usuário que está logado (seja ele Técnico, Serraria ou Fábrica).
+    ATUALIZADO: Retorna id, email e ROLE do usuário logado.
     """
-    return current_user
+    role = "desconhecido" # Valor padrão
+    
+    # Verifica a 'instância' do objeto retornado por get_current_user
+    if isinstance(current_user, models.TecnicoCampo):
+        role = "tecnico"
+    elif isinstance(current_user, models.EquipeSerraria):
+        role = "serraria"
+    elif isinstance(current_user, models.EquipeFabrica):
+        role = "fabrica"
+    
+    # Monta o dicionário de resposta com o role detectado
+    # Pydantic (UserDisplay) vai validar isso automaticamente
+    return {"id": current_user.id, "email": current_user.email, "role": role}
 
 # --- Endpoint Específico do Técnico ---
 # Esta é uma dependência extra para rotas que SÓ técnicos podem acessar
