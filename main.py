@@ -24,6 +24,7 @@ origins = [
     "http://localhost",
     "http://127.0.0.1:5500",
     "null",
+    "https://app-rastreabilidade.onrender.com"
 ]
 app.add_middleware(
     CORSMiddleware,
