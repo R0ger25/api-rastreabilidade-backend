@@ -204,5 +204,166 @@ def create_lote_tora(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Erro ao salvar no banco: {e}")
+# ===================================
+# ENDPOINTS DA SERRARIA
+# Copie e cole este código no seu main.py, após os endpoints do técnico
+# ===================================
 
-# (Aqui você pode adicionar os endpoints para Serraria e Fábrica, se precisar)
+# --- DEPENDÊNCIA: Verificar se é Serraria ---
+
+def get_current_serraria(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.EquipeSerraria:
+    """
+    Verifica se o usuário logado é da equipe da serraria.
+    """
+    credentials_exception = HTTPException(
+        status_code=401, 
+        detail="Não autorizado: Apenas a Equipe da Serraria pode acessar esta rota."
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    
+    user = db.query(models.EquipeSerraria).filter(models.EquipeSerraria.email == email).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+# --- ENDPOINT 1: LISTAR LOTES DE TORA DISPONÍVEIS ---
+
+@app.get("/lotes_tora/", response_model=List[schemas.LoteToraDisplay])
+def listar_lotes_tora(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Lista todos os lotes de tora.
+    Técnicos veem apenas os seus. Serraria e Fábrica veem todos.
+    """
+    # Se for técnico, mostra apenas os dele
+    if isinstance(current_user, models.TecnicoCampo):
+        lotes = db.query(models.LoteTora).filter(
+            models.LoteTora.id_tecnico_campo == current_user.id
+        ).all()
+    else:
+        # Serraria e Fábrica veem todos
+        lotes = db.query(models.LoteTora).all()
+    
+    return lotes
+
+
+# --- ENDPOINT 2: OBTER DETALHES DE UM LOTE DE TORA ---
+
+@app.get("/lotes_tora/{lote_id}", response_model=schemas.LoteToraDisplay)
+def obter_lote_tora(
+    lote_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Obtém detalhes de um lote de tora específico.
+    """
+    lote = db.query(models.LoteTora).filter(models.LoteTora.id == lote_id).first()
+    
+    if not lote:
+        raise HTTPException(status_code=404, detail="Lote de tora não encontrado")
+    
+    # Técnicos só podem ver seus próprios lotes
+    if isinstance(current_user, models.TecnicoCampo) and lote.id_tecnico_campo != current_user.id:
+        raise HTTPException(status_code=403, detail="Acesso negado a este lote")
+    
+    return lote
+
+
+# --- ENDPOINT 3: CRIAR LOTE SERRADO ---
+
+@app.post("/lotes_serrada/", response_model=schemas.LoteSerradaDisplay, status_code=status.HTTP_201_CREATED)
+def create_lote_serrado(
+    lote: schemas.LoteSerradaCreate,
+    db: Session = Depends(get_db),
+    current_user: models.EquipeSerraria = Depends(get_current_serraria)
+):
+    """
+    Cria um novo lote serrado a partir de um lote de tora.
+    Apenas equipe da serraria pode executar.
+    """
+    # 1. Verificar se o lote de tora existe
+    lote_tora = db.query(models.LoteTora).filter(
+        models.LoteTora.id == lote.id_lote_tora_origem
+    ).first()
+    
+    if not lote_tora:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Lote de tora com ID {lote.id_lote_tora_origem} não encontrado"
+        )
+    
+    # 2. Calcular volume já processado deste lote
+    lotes_ja_processados = db.query(models.LoteSerrada).filter(
+        models.LoteSerrada.id_lote_tora_origem == lote.id_lote_tora_origem
+    ).all()
+    
+    volume_processado = sum(float(ls.volume_saida_m3) for ls in lotes_ja_processados)
+    volume_disponivel = float(lote_tora.volume_estimado_m3) - volume_processado
+    
+    # 3. Validar se há volume suficiente
+    if float(lote.volume_saida_m3) > volume_disponivel:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Volume de saída ({lote.volume_saida_m3} m³) excede o volume disponível ({volume_disponivel:.2f} m³)"
+        )
+    
+    # 4. Gerar ID customizado (SERR-YYYYMMDD-XXX)
+    hoje = datetime.date.today().strftime("%Y%m%d")
+    ultimo_lote = db.query(models.LoteSerrada).filter(
+        models.LoteSerrada.id_lote_serrado_custom.like(f"SERR-{hoje}-%")
+    ).order_by(models.LoteSerrada.id.desc()).first()
+    
+    if ultimo_lote:
+        ultimo_numero = int(ultimo_lote.id_lote_serrado_custom.split("-")[-1])
+        novo_numero = ultimo_numero + 1
+    else:
+        novo_numero = 1
+    
+    id_lote_serrado_custom = f"SERR-{hoje}-{novo_numero:03d}"
+    
+    # 5. Criar o lote serrado
+    db_lote_serrado = models.LoteSerrada(
+        **lote.model_dump(),
+        id_lote_serrado_custom=id_lote_serrado_custom,
+        id_equipe_serraria=current_user.id
+    )
+    
+    try:
+        db.add(db_lote_serrado)
+        db.commit()
+        db.refresh(db_lote_serrado)
+        return db_lote_serrado
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Erro ao salvar lote serrado: {e}")
+
+# --- ENDPOINT 4: LISTAR MEUS LOTES SERRADOS ---
+
+@app.get("/lotes_serrada/", response_model=List[schemas.LoteSerradaDisplay])
+def listar_lotes_serrados(
+    db: Session = Depends(get_db),
+    current_user: models.EquipeSerraria = Depends(get_current_serraria)
+):
+    """
+    Lista todos os lotes serrados processados pelo usuário atual.
+    """
+    lotes = db.query(models.LoteSerrada).filter(
+        models.LoteSerrada.id_equipe_serraria == current_user.id
+    ).order_by(models.LoteSerrada.data_processamento.desc()).all()
+    
+    return lotes
+
+
+# ===================================
+# FIM DOS ENDPOINTS DA SERRARIA
+# ===================================
