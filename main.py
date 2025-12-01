@@ -367,3 +367,239 @@ def listar_lotes_serrados(
 # ===================================
 # FIM DOS ENDPOINTS DA SERRARIA
 # ===================================
+
+# ===================================
+# ENDPOINTS DA FÁBRICA
+# Copie e cole este código no seu main.py, após os endpoints da serraria
+# ===================================
+
+# --- DEPENDÊNCIA: Verificar se é Fábrica ---
+
+def get_current_fabrica(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.EquipeFabrica:
+    """
+    Verifica se o usuário logado é da equipe da fábrica.
+    """
+    credentials_exception = HTTPException(
+        status_code=401, 
+        detail="Não autorizado: Apenas a Equipe da Fábrica pode acessar esta rota."
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    
+    user = db.query(models.EquipeFabrica).filter(models.EquipeFabrica.email == email).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+# --- ENDPOINT 1: LISTAR LOTES SERRADOS DISPONÍVEIS ---
+
+@app.get("/lotes_serrado/", response_model=List[schemas.LoteSerradaDisplay])
+def listar_lotes_serrados_para_fabrica(
+    db: Session = Depends(get_db),
+    current_user: models.EquipeFabrica = Depends(get_current_fabrica)
+):
+    """
+    Lista todos os lotes serrados disponíveis para fabricação.
+    Apenas equipe da fábrica pode acessar.
+    """
+    lotes = db.query(models.LoteSerrado).order_by(
+        models.LoteSerrado.data_processamento.desc()
+    ).all()
+    
+    return lotes
+
+
+# --- ENDPOINT 2: OBTER DETALHES DE UM LOTE SERRADO ---
+
+@app.get("/lotes_serrado/{lote_id}", response_model=schemas.LoteSerradaDisplay)
+def obter_lote_serrado_para_fabrica(
+    lote_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.EquipeFabrica = Depends(get_current_fabrica)
+):
+    """
+    Obtém detalhes de um lote serrado específico.
+    """
+    lote = db.query(models.LoteSerrado).filter(models.LoteSerrado.id == lote_id).first()
+    
+    if not lote:
+        raise HTTPException(status_code=404, detail="Lote serrado não encontrado")
+    
+    return lote
+
+
+# --- ENDPOINT 3: CRIAR PRODUTO ACABADO ---
+
+@app.post("/produtos_acabados/", response_model=schemas.LoteProdutoAcabadoDisplay, status_code=status.HTTP_201_CREATED)
+def create_produto_acabado(
+    produto: schemas.LoteProdutoAcabadoCreate,
+    db: Session = Depends(get_db),
+    current_user: models.EquipeFabrica = Depends(get_current_fabrica)
+):
+    """
+    Cria um novo produto acabado a partir de um lote serrado.
+    Apenas equipe da fábrica pode executar.
+    """
+    # 1. Verificar se o lote serrado existe
+    lote_serrado = db.query(models.LoteSerrado).filter(
+        models.LoteSerrado.id == produto.id_lote_serrado_origem
+    ).first()
+    
+    if not lote_serrado:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Lote serrado com ID {produto.id_lote_serrado_origem} não encontrado"
+        )
+    
+    # 2. Gerar ID customizado (PROD-YYYYMMDD-XXX)
+    hoje = datetime.date.today().strftime("%Y%m%d")
+    ultimo_produto = db.query(models.LoteProdutoAcabado).filter(
+        models.LoteProdutoAcabado.id_lote_produto_custom.like(f"PROD-{hoje}-%")
+    ).order_by(models.LoteProdutoAcabado.id.desc()).first()
+    
+    if ultimo_produto:
+        ultimo_numero = int(ultimo_produto.id_lote_produto_custom.split("-")[-1])
+        novo_numero = ultimo_numero + 1
+    else:
+        novo_numero = 1
+    
+    id_lote_produto_custom = f"PROD-{hoje}-{novo_numero:03d}"
+    
+    # 3. Gerar link do QR Code (se não foi fornecido)
+    # Aqui você pode usar um serviço de geração de QR Code
+    # Por enquanto, vamos usar um placeholder
+    if not produto.link_qr_code:
+        # URL de rastreabilidade que aponta para uma página pública
+        produto.link_qr_code = f"https://app-rastreabilidade.onrender.com/rastrear/{id_lote_produto_custom}"
+    
+    # 4. Criar o produto acabado
+    db_produto = models.LoteProdutoAcabado(
+        **produto.model_dump(),
+        id_lote_produto_custom=id_lote_produto_custom,
+        id_equipe_fabrica=current_user.id
+    )
+    
+    try:
+        db.add(db_produto)
+        db.commit()
+        db.refresh(db_produto)
+        return db_produto
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Erro ao salvar produto acabado: {e}")
+
+
+# --- ENDPOINT 4: LISTAR MEUS PRODUTOS ACABADOS ---
+
+@app.get("/produtos_acabados/", response_model=List[schemas.LoteProdutoAcabadoDisplay])
+def listar_produtos_acabados(
+    db: Session = Depends(get_db),
+    current_user: models.EquipeFabrica = Depends(get_current_fabrica)
+):
+    """
+    Lista todos os produtos acabados fabricados pelo usuário atual.
+    """
+    produtos = db.query(models.LoteProdutoAcabado).filter(
+        models.LoteProdutoAcabado.id_equipe_fabrica == current_user.id
+    ).order_by(models.LoteProdutoAcabado.data_fabricacao.desc()).all()
+    
+    return produtos
+
+
+# --- ENDPOINT 5: OBTER DETALHES DE UM PRODUTO ACABADO ---
+
+@app.get("/produtos_acabados/{produto_id}", response_model=schemas.LoteProdutoAcabadoDisplay)
+def obter_produto_acabado(
+    produto_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.EquipeFabrica = Depends(get_current_fabrica)
+):
+    """
+    Obtém detalhes de um produto acabado específico.
+    """
+    produto = db.query(models.LoteProdutoAcabado).filter(
+        models.LoteProdutoAcabado.id == produto_id
+    ).first()
+    
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto acabado não encontrado")
+    
+    # Fábrica só pode ver seus próprios produtos
+    if produto.id_equipe_fabrica != current_user.id:
+        raise HTTPException(status_code=403, detail="Acesso negado a este produto")
+    
+    return produto
+
+
+# --- ENDPOINT 6: RASTREABILIDADE COMPLETA (PÚBLICO) ---
+
+@app.get("/rastrear/{id_produto_custom}")
+def rastrear_produto(id_produto_custom: str, db: Session = Depends(get_db)):
+    """
+    Endpoint PÚBLICO para rastrear um produto pela sua ID customizada.
+    Retorna toda a cadeia de rastreabilidade: Produto → Serrado → Tora.
+    """
+    # Buscar o produto
+    produto = db.query(models.LoteProdutoAcabado).filter(
+        models.LoteProdutoAcabado.id_lote_produto_custom == id_produto_custom
+    ).first()
+    
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    # Buscar lote serrado origem
+    lote_serrado = db.query(models.LoteSerrado).filter(
+        models.LoteSerrado.id == produto.id_lote_serrado_origem
+    ).first()
+    
+    # Buscar lote de tora origem
+    lote_tora = None
+    if lote_serrado:
+        lote_tora = db.query(models.LoteTora).filter(
+            models.LoteTora.id == lote_serrado.id_lote_tora_origem
+        ).first()
+    
+    # Montar resposta com toda a cadeia
+    return {
+        "produto": {
+            "id": produto.id,
+            "id_custom": produto.id_lote_produto_custom,
+            "nome": produto.nome_produto,
+            "sku": produto.sku_produto,
+            "data_fabricacao": produto.data_fabricacao.isoformat(),
+            "dados_acabamento": produto.dados_acabamento
+        },
+        "lote_serrado": {
+            "id": lote_serrado.id,
+            "id_custom": lote_serrado.id_lote_serrado_custom,
+            "tipo_produto": lote_serrado.tipo_produto,
+            "dimensoes": lote_serrado.dimensoes,
+            "volume_m3": float(lote_serrado.volume_saida_m3),
+            "data_processamento": lote_serrado.data_processamento.isoformat()
+        } if lote_serrado else None,
+        "lote_tora": {
+            "id": lote_tora.id,
+            "id_custom": lote_tora.id_lote_custom,
+            "especie_popular": lote_tora.especie_madeira_popular,
+            "especie_cientifica": lote_tora.especie_madeira_cientifico,
+            "volume_m3": float(lote_tora.volume_estimado_m3),
+            "numero_dof": lote_tora.numero_dof,
+            "numero_licenca": lote_tora.numero_licenca_ambiental,
+            "coordenadas": {
+                "lat": float(lote_tora.coordenadas_gps_lat),
+                "lon": float(lote_tora.coordenadas_gps_lon)
+            },
+            "data_registro": lote_tora.data_hora_registro.isoformat()
+        } if lote_tora else None
+    }
+
+
+# ===================================
+# FIM DOS ENDPOINTS DA FÁBRICA
+# ===================================
