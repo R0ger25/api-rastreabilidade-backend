@@ -476,7 +476,7 @@ def create_produto_acabado(
     # Por enquanto, vamos usar um placeholder
     if not produto.link_qr_code:
         # URL de rastreabilidade que aponta para uma página pública
-        produto.link_qr_code = f"https://app-rastreabilidade.onrender.com/rastrear/{id_lote_produto_custom}"
+        produto.link_qr_code = f"https://app-rastreabilidade.onrender.com/rastrear.html?id={id_lote_produto_custom}"
     
     # 4. Criar o produto acabado
     db_produto = models.LoteProdutoAcabado(
