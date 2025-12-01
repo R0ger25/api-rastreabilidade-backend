@@ -303,8 +303,8 @@ def create_lote_serrado(
         )
     
     # 2. Calcular volume já processado deste lote
-    lotes_ja_processados = db.query(models.LoteSerrada).filter(
-        models.LoteSerrada.id_lote_tora_origem == lote.id_lote_tora_origem
+    lotes_ja_processados = db.query(models.LoteSerrado).filter(
+        models.LoteSerrado.id_lote_tora_origem == lote.id_lote_tora_origem
     ).all()
     
     volume_processado = sum(float(ls.volume_saida_m3) for ls in lotes_ja_processados)
@@ -319,9 +319,9 @@ def create_lote_serrado(
     
     # 4. Gerar ID customizado (SERR-YYYYMMDD-XXX)
     hoje = datetime.date.today().strftime("%Y%m%d")
-    ultimo_lote = db.query(models.LoteSerrada).filter(
-        models.LoteSerrada.id_lote_serrado_custom.like(f"SERR-{hoje}-%")
-    ).order_by(models.LoteSerrada.id.desc()).first()
+    ultimo_lote = db.query(models.LoteSerrado).filter(
+        models.LoteSerrado.id_lote_serrado_custom.like(f"SERR-{hoje}-%")
+    ).order_by(models.LoteSerrado.id.desc()).first()
     
     if ultimo_lote:
         ultimo_numero = int(ultimo_lote.id_lote_serrado_custom.split("-")[-1])
@@ -332,7 +332,7 @@ def create_lote_serrado(
     id_lote_serrado_custom = f"SERR-{hoje}-{novo_numero:03d}"
     
     # 5. Criar o lote serrado
-    db_lote_serrado = models.LoteSerrada(
+    db_lote_serrado = models.LoteSerrado(
         **lote.model_dump(),
         id_lote_serrado_custom=id_lote_serrado_custom,
         id_equipe_serraria=current_user.id
@@ -357,9 +357,9 @@ def listar_lotes_serrados(
     """
     Lista todos os lotes serrados processados pelo usuário atual.
     """
-    lotes = db.query(models.LoteSerrada).filter(
-        models.LoteSerrada.id_equipe_serraria == current_user.id
-    ).order_by(models.LoteSerrada.data_processamento.desc()).all()
+    lotes = db.query(models.LoteSerrado).filter(
+        models.LoteSerrado.id_equipe_serraria == current_user.id
+    ).order_by(models.LoteSerrado.data_processamento.desc()).all()
     
     return lotes
 
