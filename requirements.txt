@@ -9,3 +9,5 @@ python-jose[cryptography]
 python-multipart
 passlib
 bcrypt<4.0
+web3
+eth-account
