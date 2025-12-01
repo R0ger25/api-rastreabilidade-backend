@@ -142,7 +142,12 @@ def send_transaction(transaction: dict) -> Optional[str]:
         signed_txn = w3.eth.account.sign_transaction(transaction, PRIVATE_KEY)
         
         # Enviar transação
-        tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        try:
+            # Tenta primeiro o atributo novo (v6+)
+            tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
+        except AttributeError:
+            # Se não funcionar, tenta o atributo antigo (v5)
+            tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
         
         # Aguardar confirmação
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
