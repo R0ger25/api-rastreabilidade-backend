@@ -494,18 +494,26 @@ def create_produto_acabado(
         # Registrar na blockchain
         if BLOCKCHAIN_ENABLED:
             try:
-                tx_hash = blockchain.registrar_produto_acabado_blockchain(
-                    id_produto_custom=db_produto.id_lote_produto_custom,
-                    id_lote_serrado_origem=lote_serrado.id_lote_serrado_custom,
-                    sku_produto=produto.sku_produto,
-                    nome_produto=produto.nome_produto
-                )
+                # Buscar o lote serrado para pegar o ID customizado
+                lote_serrado_origem = db.query(models.LoteSerrado).filter(
+                    models.LoteSerrado.id == produto.id_lote_serrado_origem
+                ).first()
                 
-                if tx_hash:
-                    print(f"✅ Produto registrado na blockchain: {tx_hash}")
-                    print(f"🔗 Etherscan: https://sepolia.etherscan.io/tx/{tx_hash}")
+                if not lote_serrado_origem:
+                    print("⚠️ Lote serrado origem não encontrado para blockchain")
                 else:
-                    print(f"⚠️ Produto salvo no BD, mas falhou na blockchain")
+                    tx_hash = blockchain.registrar_produto_acabado_blockchain(
+                        id_produto_custom=db_produto.id_lote_produto_custom,
+                        id_lote_serrado_origem=lote_serrado_origem.id_lote_serrado_custom,  # ID customizado!
+                        sku_produto=produto.sku_produto,
+                        nome_produto=produto.nome_produto
+                    )
+                    
+                    if tx_hash:
+                        print(f"✅ Produto registrado na blockchain: {tx_hash}")
+                        print(f"🔗 Etherscan: https://sepolia.etherscan.io/tx/{tx_hash}")
+                    else:
+                        print(f"⚠️ Produto salvo no BD, mas falhou na blockchain")
                     
             except Exception as blockchain_error:
                 print(f"⚠️ Erro blockchain: {blockchain_error}")
