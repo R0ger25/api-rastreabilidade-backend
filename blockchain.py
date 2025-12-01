@@ -29,6 +29,27 @@ PRIVATE_KEY = os.getenv("ETHEREUM_PRIVATE_KEY", "")
 # Endereço da carteira
 WALLET_ADDRESS = os.getenv("ETHEREUM_WALLET_ADDRESS", "")
 
+# Converter para checksum address se necessário
+if WALLET_ADDRESS and not WALLET_ADDRESS.startswith("0x"):
+    WALLET_ADDRESS = "0x" + WALLET_ADDRESS
+
+if WALLET_ADDRESS and WALLET_ADDRESS != "":
+    try:
+        from web3 import Web3 as Web3Check
+        WALLET_ADDRESS = Web3Check.to_checksum_address(WALLET_ADDRESS)
+        print(f"✅ Wallet address convertido para checksum: {WALLET_ADDRESS}")
+    except Exception as e:
+        print(f"⚠️ Erro ao converter wallet address: {e}")
+
+# Converter CONTRACT_ADDRESS para checksum também
+if CONTRACT_ADDRESS and CONTRACT_ADDRESS != "0x...":
+    try:
+        from web3 import Web3 as Web3Check
+        CONTRACT_ADDRESS = Web3Check.to_checksum_address(CONTRACT_ADDRESS)
+        print(f"✅ Contract address convertido para checksum: {CONTRACT_ADDRESS}")
+    except Exception as e:
+        print(f"⚠️ Erro ao converter contract address: {e}")
+
 # ===================================
 # INICIALIZAÇÃO WEB3
 # ===================================
@@ -45,12 +66,30 @@ else:
 # Instanciar o contrato
 contract = None
 if CONTRACT_ADDRESS != "0x..." and len(CONTRACT_ABI) > 0:
-    contract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-    print(f"✅ Contrato carregado: {CONTRACT_ADDRESS}")
+    try:
+        contract_address_checksum = w3.to_checksum_address(CONTRACT_ADDRESS)
+        contract = w3.eth.contract(address=contract_address_checksum, abi=CONTRACT_ABI)
+        print(f"✅ Contrato carregado: {contract_address_checksum}")
+    except Exception as e:
+        print(f"❌ Erro ao carregar contrato: {e}")
 
 # ===================================
 # FUNÇÕES AUXILIARES
 # ===================================
+
+def to_checksum_address(address: str) -> str:
+    """
+    Converte qualquer endereço para formato checksum
+    """
+    try:
+        if not address or address == "":
+            return address
+        if not address.startswith("0x"):
+            address = "0x" + address
+        return w3.to_checksum_address(address)
+    except Exception as e:
+        print(f"⚠️ Erro ao converter endereço {address}: {e}")
+        return address
 
 def converter_volume_para_blockchain(volume_decimal: float) -> int:
     """
@@ -70,18 +109,21 @@ def build_transaction(function_call) -> dict:
     """
     Constrói uma transação para enviar ao blockchain
     """
-    nonce = w3.eth.get_transaction_count(WALLET_ADDRESS)
+    # Garantir que WALLET_ADDRESS está em formato checksum
+    wallet_checksum = w3.to_checksum_address(WALLET_ADDRESS)
+    
+    nonce = w3.eth.get_transaction_count(wallet_checksum)
     
     # Estimar gas
     try:
-        gas_estimate = function_call.estimate_gas({'from': WALLET_ADDRESS})
+        gas_estimate = function_call.estimate_gas({'from': wallet_checksum})
     except Exception as e:
         print(f"⚠️ Erro ao estimar gas: {e}")
         gas_estimate = 300000  # Valor padrão
     
     # Construir transação
     transaction = function_call.build_transaction({
-        'from': WALLET_ADDRESS,
+        'from': wallet_checksum,
         'nonce': nonce,
         'gas': gas_estimate,
         'gasPrice': w3.eth.gas_price,
